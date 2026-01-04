@@ -47,12 +47,17 @@ export class InstagramHandler {
                 '--no-playlist',
                 '--user-agent', this.getRandomUserAgent(),
                 '--no-check-certificates',
+                '--ignore-errors',
+                '--no-warnings',
+                '--extractor-args', 'instagram:app_version=275.0.0.27.98',
                 url,
             ];
 
             if (cookies) {
                 args.push('--cookies', cookies);
             }
+
+            logger.info(`Running yt-dlp for Instagram: ${url}`);
 
             const childProcess = spawn(this.ytdlpPath, args);
             let stdout = '';
@@ -68,6 +73,8 @@ export class InstagramHandler {
 
             childProcess.on('close', (code) => {
                 if (code !== 0) {
+                    logger.error(`Instagram yt-dlp failed (code ${code}): ${stderr.substring(0, 500)}`);
+
                     if (stderr.includes('Login required') || stderr.includes('login')) {
                         reject(new Error('Login required to access this content'));
                         return;
