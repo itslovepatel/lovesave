@@ -32,9 +32,9 @@ export class YouTubeHandler {
     constructor() {
         this.ytdlpPath = process.env.YTDLP_PATH || 'yt-dlp';
         this.userAgents = [
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0',
+            'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
+            'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+            'com.google.android.youtube/19.02.35 (Linux; U; Android 14; en_US; Pixel 8 Build/AP1A.240305.019)',
         ];
     }
 
@@ -43,12 +43,34 @@ export class YouTubeHandler {
     }
 
     async parse(url: string, cookies?: string): Promise<ParsedVideo> {
+        // Try with Android player first (bypasses most bot detection)
+        try {
+            return await this.parseWithClient(url, 'android', cookies);
+        } catch (error) {
+            logger.warn('Android client failed, trying iOS client...');
+        }
+
+        // Fallback to iOS client
+        try {
+            return await this.parseWithClient(url, 'ios', cookies);
+        } catch (error) {
+            logger.warn('iOS client failed, trying web client...');
+        }
+
+        // Final fallback - web client
+        return this.parseWithClient(url, 'web', cookies);
+    }
+
+    private parseWithClient(url: string, client: string, cookies?: string): Promise<ParsedVideo> {
         return new Promise((resolve, reject) => {
             const args = [
                 '--dump-json',
                 '--no-playlist',
                 '--user-agent', this.getRandomUserAgent(),
                 '--no-check-certificates',
+                '--extractor-args', `youtube:player_client=${client}`,
+                '--no-warnings',
+                '--ignore-errors',
                 url,
             ];
 
@@ -56,7 +78,7 @@ export class YouTubeHandler {
                 args.push('--cookies', cookies);
             }
 
-            logger.debug(`Running yt-dlp with args: ${args.join(' ')}`);
+            logger.debug(`Running yt-dlp with ${client} client for: ${url}`);
 
             const process = spawn(this.ytdlpPath, args);
             let stdout = '';
@@ -72,7 +94,7 @@ export class YouTubeHandler {
 
             process.on('close', (code) => {
                 if (code !== 0) {
-                    logger.error(`yt-dlp error: ${stderr}`);
+                    logger.error(`yt-dlp error (${client}): ${stderr}`);
 
                     if (stderr.includes('Sign in to confirm your age') || stderr.includes('requires authentication')) {
                         reject(new Error('Content is age-restricted or requires login'));
@@ -84,6 +106,10 @@ export class YouTubeHandler {
                     }
                     if (stderr.includes('DRM') || stderr.includes('protected')) {
                         reject(new Error('Content is DRM protected'));
+                        return;
+                    }
+                    if (stderr.includes('Sign in to confirm') || stderr.includes('not a bot')) {
+                        reject(new Error('YouTube is blocking this request. Try again later.'));
                         return;
                     }
 
@@ -189,6 +215,7 @@ export class YouTubeHandler {
                 '--playlist-start', String(offset + 1),
                 '--playlist-end', String(offset + limit),
                 '--user-agent', this.getRandomUserAgent(),
+                '--extractor-args', 'youtube:player_client=android',
                 url,
             ];
 
@@ -248,6 +275,7 @@ export class YouTubeHandler {
                 '--get-url',
                 '-f', formatId,
                 '--user-agent', this.getRandomUserAgent(),
+                '--extractor-args', 'youtube:player_client=android',
                 url,
             ];
 
