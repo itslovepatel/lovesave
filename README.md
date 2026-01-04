@@ -5,7 +5,7 @@ A cross-platform mobile app for downloading media from YouTube, Instagram, TikTo
 ## Project Structure
 
 ```
-abcgravity/
+LoveSpace-Folder/
 ├── docs/                        # Documentation
 │   ├── 01-PRODUCT_REQUIREMENTS.md
 │   ├── 02-TECHNICAL_SPECIFICATION.md
