@@ -228,6 +228,14 @@ export class InstagramHandler {
             });
         }
 
+        // Add audio-only option
+        formats.push({
+            formatId: 'bestaudio',
+            quality: 'Audio Only (MP3)',
+            type: 'audio',
+            container: 'mp3',
+        });
+
         if (formats.length === 0) {
             formats.push({
                 formatId: 'best',
