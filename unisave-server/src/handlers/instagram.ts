@@ -191,8 +191,9 @@ export class InstagramHandler {
         const formats: VideoFormat[] = [];
 
         // Add best combined format (video+audio) as first option
+        // Using 'best' which gives a single stream with both audio and video
         formats.push({
-            formatId: 'bestvideo+bestaudio/best',
+            formatId: 'best',
             quality: 'Best (HD with Audio)',
             type: 'video',
             container: 'mp4',

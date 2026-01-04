@@ -1,7 +1,10 @@
 import { Router, Request, Response } from 'express';
-import { spawn } from 'child_process';
+import { spawn, exec } from 'child_process';
 import axios from 'axios';
 import { logger } from '../utils/logger';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
 
 export const streamRouter = Router();
 
@@ -12,7 +15,12 @@ async function getDirectUrl(videoUrl: string, formatId: string): Promise<string>
         return await getImageUrl(videoUrl);
     }
 
-    // For video formats, use yt-dlp
+    // For merged formats like bestvideo+bestaudio, download and serve
+    if (formatId.includes('+')) {
+        return await downloadMergedVideo(videoUrl, formatId);
+    }
+
+    // For single formats, use yt-dlp --get-url
     return await getVideoUrl(videoUrl, formatId);
 }
 
@@ -67,20 +75,66 @@ async function getImageUrl(pageUrl: string): Promise<string> {
     }
 }
 
-// Get video URL using yt-dlp
+// Download merged video (video+audio) and return file path
+async function downloadMergedVideo(videoUrl: string, formatId: string): Promise<string> {
+    return new Promise((resolve, reject) => {
+        const ytdlpPath = process.env.YTDLP_PATH || 'yt-dlp';
+        const tmpDir = os.tmpdir();
+        const outputFile = path.join(tmpDir, `lovesave_${Date.now()}.mp4`);
+
+        // Use 'best' format which has both audio and video in one stream
+        // This is more reliable than merging for streaming
+        const args = [
+            '-f', 'best[ext=mp4]/best',
+            '-o', outputFile,
+            '--user-agent', 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36',
+            '--no-playlist',
+            '--no-warnings',
+            videoUrl,
+        ];
+
+        logger.info(`Downloading merged video: ${videoUrl}`);
+
+        const childProcess = spawn(ytdlpPath, args);
+        let stderr = '';
+
+        childProcess.stderr.on('data', (data) => {
+            stderr += data.toString();
+        });
+
+        childProcess.on('close', (code) => {
+            if (code === 0 && fs.existsSync(outputFile)) {
+                logger.info(`Downloaded to: ${outputFile}`);
+                resolve(outputFile);
+            } else {
+                logger.error(`Download error: ${stderr}`);
+                reject(new Error(stderr || 'Failed to download video'));
+            }
+        });
+
+        childProcess.on('error', (err) => {
+            reject(new Error('yt-dlp is not installed'));
+        });
+    });
+}
+
+// Get video URL using yt-dlp (for single streams)
 function getVideoUrl(videoUrl: string, formatId: string): Promise<string> {
     return new Promise((resolve, reject) => {
         const ytdlpPath = process.env.YTDLP_PATH || 'yt-dlp';
 
-        const formatSelector = formatId && formatId !== 'best'
-            ? `${formatId}/best[ext=mp4]/best`
-            : 'best[ext=mp4]/best';
+        // Use 'best' which gives a single URL with video+audio combined
+        // This is crucial for Instagram reels which have audio
+        const formatSelector = formatId === 'best' || !formatId
+            ? 'best[ext=mp4]/best'
+            : formatId;
 
         const args = [
             '--get-url',
             '-f', formatSelector,
-            '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            '--user-agent', 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36',
             '--no-playlist',
+            '--extractor-args', 'youtube:player_client=android',
             videoUrl,
         ];
 
@@ -117,7 +171,7 @@ function getVideoUrl(videoUrl: string, formatId: string): Promise<string> {
     });
 }
 
-// Main stream endpoint - redirects to direct URL
+// Main stream endpoint - redirects to direct URL or serves file
 streamRouter.get('/:streamId', async (req: Request, res: Response) => {
     try {
         const { streamId } = req.params;
@@ -133,10 +187,22 @@ streamRouter.get('/:streamId', async (req: Request, res: Response) => {
 
         logger.info(`Stream request: ${streamId}, format: ${formatId || 'best'}`);
 
-        const directUrl = await getDirectUrl(videoUrl, formatId as string || 'best');
+        const result = await getDirectUrl(videoUrl, formatId as string || 'best');
 
-        logger.info(`Redirecting to direct URL`);
-        res.redirect(directUrl);
+        // If it's a file path (downloaded merged video), serve the file
+        if (result.startsWith('/') || result.includes('lovesave_')) {
+            logger.info(`Serving downloaded file: ${result}`);
+            res.download(result, 'video.mp4', (err) => {
+                // Clean up temp file after download
+                if (!err) {
+                    fs.unlink(result, () => { });
+                }
+            });
+        } else {
+            // It's a URL, redirect
+            logger.info(`Redirecting to direct URL`);
+            res.redirect(result);
+        }
 
     } catch (error: any) {
         logger.error('Stream error:', error.message);
@@ -162,7 +228,8 @@ streamRouter.get('/url/:streamId', async (req: Request, res: Response) => {
 
         logger.info(`URL request: ${streamId}, format: ${formatId || 'best'}`);
 
-        const directUrl = await getDirectUrl(videoUrl, formatId as string || 'best');
+        // For URL endpoint, always use single-stream format to avoid issues
+        const directUrl = await getVideoUrl(videoUrl, 'best');
 
         res.json({ success: true, url: directUrl });
 
