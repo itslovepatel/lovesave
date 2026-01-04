@@ -190,6 +190,14 @@ export class InstagramHandler {
     private transformInfo(info: any): ParsedVideo {
         const formats: VideoFormat[] = [];
 
+        // Add best combined format (video+audio) as first option
+        formats.push({
+            formatId: 'bestvideo+bestaudio/best',
+            quality: 'Best (HD with Audio)',
+            type: 'video',
+            container: 'mp4',
+        });
+
         const videoFormats = (info.formats || [])
             .filter((f: any) => f.vcodec !== 'none' && f.ext === 'mp4')
             .sort((a: any, b: any) => (b.height || 0) - (a.height || 0));
@@ -198,8 +206,9 @@ export class InstagramHandler {
         for (const f of videoFormats) {
             if (f.height && !seenResolutions.has(f.height)) {
                 seenResolutions.add(f.height);
+                // Use format that includes audio if available
                 formats.push({
-                    formatId: f.format_id,
+                    formatId: f.acodec !== 'none' ? f.format_id : `${f.format_id}+bestaudio`,
                     quality: `${f.height}p`,
                     type: 'video',
                     container: 'mp4',
@@ -209,7 +218,7 @@ export class InstagramHandler {
             }
         }
 
-        if (formats.length === 0 && info.thumbnail) {
+        if (formats.length === 1 && info.thumbnail) {
             formats.push({
                 formatId: 'image',
                 quality: 'Original',
