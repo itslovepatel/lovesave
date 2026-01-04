@@ -10,6 +10,7 @@ export interface VideoFormat {
     filesize?: number;
     fps?: number;
     sampleRate?: number;
+    directUrl?: string; // Direct download URL for client-side downloads
 }
 
 export interface ParsedVideo {
@@ -154,6 +155,7 @@ export class YouTubeHandler {
                     codec: f.vcodec?.split('.')[0],
                     filesize: f.filesize || f.filesize_approx,
                     fps: f.fps,
+                    directUrl: f.url, // Direct URL for client-side downloads
                 });
             }
         }
@@ -176,6 +178,7 @@ export class YouTubeHandler {
                     codec: f.acodec?.split('.')[0],
                     filesize: f.filesize || f.filesize_approx,
                     sampleRate: f.asr,
+                    directUrl: f.url, // Direct URL for client-side downloads
                 });
             }
         }
@@ -190,6 +193,7 @@ export class YouTubeHandler {
                 container: 'mp3',
                 codec: best.acodec?.split('.')[0],
                 filesize: best.filesize || best.filesize_approx,
+                directUrl: best.url, // Direct URL for client-side downloads
             });
         }
 
