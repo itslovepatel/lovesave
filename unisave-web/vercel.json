@@ -1,0 +1,7 @@
+{
+    "version": 2,
+    "name": "unisave-web",
+    "buildCommand": null,
+    "outputDirectory": ".",
+    "cleanUrls": true
+}
